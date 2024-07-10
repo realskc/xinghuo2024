@@ -3,16 +3,14 @@
 #include <random>
 std::mt19937 rd(114514);
 std::normal_distribution<float> dist;
-constexpr int batchSize = 128; // 16: 1140ms, 32: 1100ms, 64: 1090ms, 128: 1070ms, 256: 1070ms
+// constexpr int batchSize = 128; // 16: 1140ms, 32: 1100ms, 64: 1090ms, 128: 1070ms, 256: 1070ms
 __global__ void cuda_matmul(const float *A, const float *B, size_t m, size_t n, size_t K, float *C) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
-	int k = blockIdx.z * blockDim.z + threadIdx.z;
 	float tmp = 0;
-	if (i < m && j < n && k * batchSize < K) {
-		int r = min(k * batchSize + batchSize, (int)K);
-		for (int kk = k * batchSize; kk < r; ++kk)
-			tmp += A[i * K + kk] * B[j * K + kk];
+	if (i < m && j < n) {
+		for (int k = 0; k < K; ++k)
+			tmp += A[i * K + k] * B[j * K + k];
 	}
 	atomicAdd(&C[i * n + j], tmp);
 }
@@ -33,9 +31,8 @@ void matmul(const float *A, const float *B, size_t m, size_t n, size_t k, float 
 	cudaMemcpy(cuda_A, A, m * k * sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpy(cuda_B, BT, n * k * sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpy(cuda_C, output, m * n * sizeof(float), cudaMemcpyHostToDevice);
-	dim3 threadsPerBlock(16, 16, 1);
-	dim3 numBlocks((m + threadsPerBlock.x - 1) / threadsPerBlock.x, (n + threadsPerBlock.y - 1) / threadsPerBlock.y,
-				   (k + threadsPerBlock.z * batchSize - 1) / batchSize / threadsPerBlock.z);
+	dim3 threadsPerBlock(16, 16);
+	dim3 numBlocks((m + threadsPerBlock.x - 1) / threadsPerBlock.x, (n + threadsPerBlock.y - 1) / threadsPerBlock.y);
 	cuda_matmul<<<numBlocks, threadsPerBlock>>>(cuda_A, cuda_B, m, n, k, cuda_C);
 	cudaMemcpy(output, cuda_C, m * n * sizeof(float), cudaMemcpyDeviceToHost);
 	cudaFree(cuda_A);
