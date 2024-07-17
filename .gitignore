@@ -3,3 +3,4 @@
 **/*.exp
 **/*.pdb
 .vscode/
+**/test.*
